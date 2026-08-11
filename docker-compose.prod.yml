@@ -1,0 +1,39 @@
+# Production: paste this file plus a .env onto the Docker host and run
+#   docker compose -f docker-compose.prod.yml up -d
+# The app is not published on any host port — Cloudflare's tunnel reaches it
+# over the internal network instead.
+services:
+  app:
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in .env}/copypasta:${IMAGE_TAG:-latest}
+    environment:
+      REDIS_ADDR: redis:6379
+      PORT: "8080"
+      MAX_PASTE_BYTES: ${MAX_PASTE_BYTES:-5242880}
+      DEFAULT_TTL_SECONDS: ${DEFAULT_TTL_SECONDS:-600}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/copypasta", "-healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # No RDB snapshots, no AOF: pastes exist in memory only and expiry is final.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-ttl"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      - app
+    restart: unless-stopped

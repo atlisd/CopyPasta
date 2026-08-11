@@ -1,0 +1,17 @@
+# Build output
+/copypasta
+*.exe
+*.test
+*.out
+coverage.*
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
