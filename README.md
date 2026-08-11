@@ -61,16 +61,23 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## Releasing
 
-Push a version tag and GitHub Actions builds a multi-arch image (amd64 + arm64)
-and pushes it to `ghcr.io/<owner>/copypasta`:
+Push a version tag — that is the only thing that triggers CI. It runs the tests,
+builds a multi-arch image (amd64 + arm64), pushes it to
+`ghcr.io/<owner>/copypasta`, and cuts a GitHub Release for the tag:
 
 ```sh
 git tag v0.9.0
 git push origin v0.9.0
 ```
 
-Tags produced: `v0.9.0` → `0.9.0`, `0.9`, and `latest`. If the package is private,
-run `docker login ghcr.io` on the server once with a PAT that has `read:packages`.
+Image tags produced: `v0.9.0` → `0.9.0`, `0.9`, and `latest`. The Release carries
+the image reference, its digest, and the deploy commands, followed by
+auto-generated notes from the commits since the last tag.
+
+If the package is private, run `docker login ghcr.io` on the server once with a
+PAT that has `read:packages`. The first push of a package is private by default —
+make it public (or grant the server's PAT access) under the package settings on
+GitHub.
 
 ## Configuration
 

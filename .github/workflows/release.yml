@@ -9,8 +9,8 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: read
-  packages: write
+  contents: write   # to create the GitHub Release
+  packages: write   # to push the image to GHCR
 
 jobs:
   publish:
@@ -48,6 +48,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -57,3 +58,39 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Write release notes
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/copypasta
+          VERSION: ${{ github.ref_name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cat > notes.md <<EOF
+          ### Image
+
+          \`\`\`
+          $IMAGE:$VERSION
+          \`\`\`
+
+          Digest: \`$DIGEST\` — linux/amd64, linux/arm64.
+
+          ### Deploy
+
+          \`\`\`sh
+          # in .env on the Docker host
+          IMAGE_TAG=$VERSION
+
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml up -d
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --notes-file notes.md \
+            --generate-notes \
+            --verify-tag
