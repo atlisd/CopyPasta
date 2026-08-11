@@ -278,14 +278,24 @@
   let channel = null;   // {pin, token} once a channel is open
   let outgoing = null;  // pending image; text comes straight from the textarea
 
+  // Text and image are one slot, not two: attaching an image drops whatever
+  // text was typed, and typing again drops the image. Otherwise a stale
+  // attachment would keep winning in send() and later text would never leave.
   async function acceptImage(file) {
     const { mime, data } = splitDataURL(await readFile(file));
     outgoing = { kind: "image", mime, data };
     $("send-preview").src = "data:" + mime + ";base64," + data;
     $("send-preview").classList.remove("hidden");
     $("content").value = "";
-    $("content").placeholder = "Image ready — press Send.";
+    $("content").placeholder = "Image ready — press Send. Type to replace it with text.";
     setStatus($("send-status"), "Image attached (" + Math.round(data.length * 0.75 / 1024) + " KB).", "ok");
+  }
+
+  function dropImage() {
+    outgoing = null;
+    $("send-preview").classList.add("hidden");
+    $("send-preview").removeAttribute("src");
+    $("content").placeholder = "Type, paste text, or paste/drop an image here…";
   }
 
   $("content").addEventListener("paste", (e) => {
@@ -302,6 +312,13 @@
       const file = [...(e.dataTransfer?.files || [])].find((f) => f.type.startsWith("image/"));
       if (file) acceptImage(file);
     });
+  });
+
+  $("content").addEventListener("input", () => {
+    if (outgoing && $("content").value !== "") {
+      dropImage();
+      setStatus($("send-status"), "Image dropped — Send will push this text instead.", "");
+    }
   });
 
   $("content").addEventListener("keydown", (e) => {
@@ -321,10 +338,8 @@
 
   function resetSend() {
     channel = null;
-    outgoing = null;
     $("content").value = "";
-    $("content").placeholder = "Type, paste text, or paste/drop an image here…";
-    $("send-preview").classList.add("hidden");
+    dropImage();
     $("pin-result").classList.add("hidden");
     $("send-btn").textContent = "Send";
     sendClock.stop();
@@ -334,9 +349,14 @@
 
   async function send() {
     const ttl = Number($("ttl").value);
-    const payload = outgoing
-      ? { ...outgoing }
-      : { kind: "text", data: $("content").value };
+    const text = $("content").value;
+    // Text wins whenever there is any: the image only survives while the box
+    // is empty, which is exactly the state acceptImage leaves behind.
+    const payload = text
+      ? { kind: "text", data: text }
+      : outgoing
+        ? { ...outgoing }
+        : { kind: "text", data: "" };
 
     if (!payload.data) {
       setStatus($("send-status"), "Nothing to send yet.", "err");
